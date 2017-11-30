@@ -11,7 +11,7 @@
     <body>
         <div class="container">
             <div class="page-header">
-                <h1>Admin - Product List</h1>
+                <h1>ADMIN PRODUCT LIST</h1>
             </div>
             <table class="table table-striped">
                 <thead>
