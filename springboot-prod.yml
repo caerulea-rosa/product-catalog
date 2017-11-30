@@ -1,0 +1,399 @@
+apiVersion: v1
+kind: Template
+metadata:
+  creationTimestamp: null
+  name: springboot-prod
+objects:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      openshift.io/generated-by: Ansible
+    creationTimestamp: null
+    labels:
+      app: ${APP_NAME}
+    name: ${APP_NAME}-blue
+  spec:
+    ports:
+    - name: 8080-tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentconfig: ${APP_NAME}-blue
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      openshift.io/generated-by: Ansible
+    creationTimestamp: null
+    labels:
+      app: ${APP_NAME}
+    name: ${APP_NAME}-green
+  spec:
+    ports:
+    - name: 8080-tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      deploymentconfig: ${APP_NAME}-green
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    annotations:
+      openshift.io/generated-by: Ansible
+    creationTimestamp: null
+    generation: 1
+    labels:
+      app: ${APP_NAME}
+    name: ${APP_NAME}-blue
+  spec:
+    replicas: 0
+    selector:
+      deploymentconfig: ${APP_NAME}-blue
+    strategy:
+      activeDeadlineSeconds: 21600
+      resources: {}
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ${APP_NAME}-blue
+          deploymentconfig: ${APP_NAME}-blue
+      spec:
+        containers:
+        - image: ${DEV_NAMESPACE}/${APP_NAME}:${TAG}
+          imagePullPolicy: Always
+          name: ${APP_NAME}
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 2
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /deployments/config
+            name: application-config
+          env:
+            - name: DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  key: database-user
+                  name: external-db
+            - name: DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  key: database-name
+                  name: external-db
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: database-password
+                  name: external-db
+            - name: JAVA_OPTIONS
+              value: -Dspring.profiles.active=openshift
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: application-config
+          name: application-config
+          items:
+          - key: application-openshift.properties
+            path: application-openshift.properties
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: false
+        containerNames:
+        - ${APP_NAME}
+        from:
+          kind: ImageStreamTag
+          name: ${APP_NAME}:${TAG}
+          namespace: ${DEV_NAMESPACE}
+      type: ImageChange
+    - type: ConfigChange
+  status:
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    annotations:
+      openshift.io/generated-by: Ansible
+    creationTimestamp: null
+    generation: 1
+    labels:
+      app: ${APP_NAME}
+    name: ${APP_NAME}-green
+  spec:
+    replicas: 0
+    selector:
+      deploymentconfig: ${APP_NAME}-green
+    strategy:
+      activeDeadlineSeconds: 21600
+      resources: {}
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          app: ${APP_NAME}
+          deploymentconfig: ${APP_NAME}-green
+      spec:
+        containers:
+        - image: ${DEV_NAMESPACE}/${APP_NAME}:${TAG}
+          imagePullPolicy: Always
+          name: ${APP_NAME}
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /deployments/config
+            name: application-config
+          env:
+            - name: DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  key: database-user
+                  name: external-db
+            - name: DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  key: database-name
+                  name: external-db
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: database-password
+                  name: external-db
+            - name: JAVA_OPTIONS
+              value: -Dspring.profiles.active=openshift
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: application-config
+          name: application-config
+          items:
+          - key: application-openshift.properties
+            path: application-openshift.properties
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: false
+        containerNames:
+        - ${APP_NAME}
+        from:
+          kind: ImageStreamTag
+          name: ${APP_NAME}:${TAG}
+          namespace: ${DEV_NAMESPACE}
+      type: ImageChange
+    - type: ConfigChange
+  status:
+- apiVersion: v1
+  kind: Route
+  metadata:
+    annotations:
+      openshift.io/generated-by: Ansible
+      openshift.io/host.generated: "true"
+      pipeline.alpha.openshift.io/uses: '[{"name": "${APP_NAME}", "kind": "DeploymentConfig"}]'
+    labels:
+      app: ${APP_NAME}
+    name: ${APP_NAME}
+  spec:
+    host: ${HOSTNAME}
+    port:
+      targetPort: 8080-tcp
+    to:
+      kind: Service
+      name: ${APP_NAME}-green
+      weight: 100
+    wildcardPolicy: None
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    labels:
+      app: ${APP_NAME}
+      name: release-pipeline
+    name: release-pipeline
+  spec:
+    triggers:
+      - type: GitHub
+        github:
+          secret: ${WEBHOOK_SECRET}
+      - type: Generic
+        generic:
+          secret: ${WEBHOOK_SECRET}
+    runPolicy: Serial
+    source:
+      type: None
+    strategy:
+      jenkinsPipelineStrategy:
+        jenkinsfile: |-
+          node('maven') {
+            def dest = ""
+            def currentDeployment = ""
+
+            stage('deploy to Production') {
+              sh "oc tag ${APP_NAME}:latest ${APP_NAME}:${TAG} -n ${DEV_NAMESPACE}"
+              try {
+                currentDeployment = sh (
+                  script: "oc get route ${APP_NAME} -n ${PROD_NAMESPACE} -o jsonpath='{ .spec.to.name }'",
+                  returnStdout: true)
+              } catch(Exception e1) {
+              }
+
+              dest = (currentDeployment == '${APP_NAME}-green') ? '${APP_NAME}-blue':'${APP_NAME}-green'
+              echo "Active svc: " + currentDeployment
+              echo "Dest svc:   " + dest
+              sh "oc rollout latest $dest -n ${PROD_NAMESPACE}"
+              sh "oc expose svc $dest --name=${APP_NAME}-release --hostname=${APP_NAME}-release.${APPS_DNS} -n ${PROD_NAMESPACE}"
+              sh "oc scale dc/$dest --replicas=1 -n ${PROD_NAMESPACE}"
+              sh 'oc annotate bc release-pipeline -n ${PROD_NAMESPACE} --overwrite pipeline.alpha.openshift.io/uses=\'[{"name": "' + dest + '", "namespace": "${PROD_NAMESPACE}", "kind": "DeploymentConfig"}]\''
+              sh 'oc annotate route ${APP_NAME}-release -n ${PROD_NAMESPACE} --overwrite pipeline.alpha.openshift.io/uses=\'[{"name": "' + dest + '", "namespace": "${PROD_NAMESPACE}", "kind": "DeploymentConfig"}]\''
+            }
+
+            stage('release as A/B') {
+              input "Deploy new version as 'B'?"
+              sh "oc scale dc/$dest --replicas=2 -n ${PROD_NAMESPACE}"
+              sh 'oc patch route ${APP_NAME} -n ${PROD_NAMESPACE} -p \'{"spec":{"alternateBackends":[{"kind":"Service", "weight": 20, "name":"' + dest + '"}], "to": {"weight": 80 }}}\''
+              echo "B deployment is currently: "+dest
+              sh 'oc get route ${APP_NAME} -n ${PROD_NAMESPACE}'
+              sh "oc scale dc/$currentDeployment --replicas=2 -n ${PROD_NAMESPACE}"
+              sh "oc delete route ${APP_NAME}-release -n ${PROD_NAMESPACE}"
+            }
+            stage('release new version') {
+              input "Switch Production from $currentDeployment to $dest?"
+              sh 'oc patch route ${APP_NAME} -n ${PROD_NAMESPACE} -p \'{"spec":{"alternateBackends":[], "to":{"name":"' + dest + '", "weight": 100}}}\''
+              sh 'oc annotate route ${APP_NAME} -n ${PROD_NAMESPACE} --overwrite pipeline.alpha.openshift.io/uses=\'[{"name": "' + dest + '", "namespace": "${PROD_NAMESPACE}", "kind": "DeploymentConfig"}]\''
+              echo "Active deployment is currently:" + dest
+              sh 'oc get route ${APP_NAME} -n ${PROD_NAMESPACE}'
+              sh "oc scale dc/$currentDeployment --replicas=0 -n ${PROD_NAMESPACE}"
+
+            }
+          }
+      type: JenkinsPipeline
+  status:
+    lastVersion: 0
+- apiVersion: v1
+  data:
+    application-openshift.properties: |-
+      # PostgresDB Settings
+      spring.datasource.url=jdbc:postgresql://external-db:5432/${DATABASE_NAME}
+      spring.datasource.username=${DATABASE_USER}
+      spring.datasource.password=${DATABASE_PASSWORD}
+      spring.datasource.driver-class-name=org.postgresql.Driver
+      #spring.jpa.hibernate.ddl-auto=create
+  kind: ConfigMap
+  metadata:
+    creationTimestamp: null
+    name: application-config
+- apiVersion: v1
+  kind: Secret
+  data:
+    database-name: Zm9vYmFy
+    database-password: Zm9vYmFy
+    database-user: Zm9vYmFy
+  metadata:
+    labels:
+      app: ${APP_NAME}
+    name: external-db
+  type: Opaque
+- apiVersion: "v1"
+  kind: "Endpoints"
+  metadata:
+    name: "external-db"
+  subsets:
+  - addresses:
+    - ip: "${EXTERNAL_DB_IP}"
+    ports:
+    - port: 5432
+      name: "postgresql"
+- apiVersion: "v1"
+  kind: "Service"
+  metadata:
+    name: "external-db"
+  spec:
+    ports:
+    - name: "postgresql"
+      protocol: "TCP"
+      port: 5432
+      targetPort: 5432
+      nodePort: 0
+  selector: {}
+parameters:
+- description: Application/Service name
+  displayName: Service name
+  name: APP_NAME
+  required: true
+- description: Production project/namespace name
+  displayName: Production namespace
+  required: true
+  name: PROD_NAMESPACE
+- description: The URL of the repository with your application source code.
+  displayName: Development namespace
+  name: DEV_NAMESPACE
+  required: true
+- description: Image tag to be deployed to production
+  displayName: Image tag
+  name: TAG
+  required: true
+- description: Service hostname
+  displayName: Hostname
+  name: HOSTNAME
+  required: true
+- description: Wildcard DNS record for apps
+  displayName: Apps DNS
+  name: APPS_DNS
+  required: true
+  value: apps.example.com
+- description: Github trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
+  displayName: GitHub Webhook Secret
+  from: '[a-zA-Z0-9]{40}'
+  generate: expression
+  name: WEBHOOK_SECRET
+- description: External DB IP address
+  displayName: External DB IP
+  name: EXTERNAL_DB_IP
+  required: true
+  value: 10.1.0.4

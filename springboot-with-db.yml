@@ -1,0 +1,302 @@
+apiVersion: v1
+kind: Template
+message: |-
+  The following service(s) have been created in your project: ${APP_NAME}.
+  Modify secrets (external-db) and configmap (application-config) to match your env.
+metadata:
+  annotations:
+    description: Springboot template with database secrets and configmap mount.
+    iconClass: icon-jboss
+    tags: java,springboot
+    version: "1.0"
+  creationTimestamp: null
+  name: springboot-test
+objects:
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenShiftNewApp
+    creationTimestamp: null
+    generation: 1
+    labels:
+      app: ${APP_NAME}
+    name: ${APP_NAME}
+  spec:
+    lookupPolicy:
+      local: false
+    tags:
+    - from:
+        kind: DockerImage
+        name: ${APP_NAME}:latest
+      generation: null
+      importPolicy: {}
+      name: latest
+      referencePolicy:
+        type: ""
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenShiftNewApp
+    creationTimestamp: null
+    generation: 1
+    labels:
+      app: ${APP_NAME}
+    name: ${APP_NAME}
+  spec:
+    replicas: 1
+    selector:
+      app: ${APP_NAME}
+      deploymentconfig: ${APP_NAME}
+    strategy:
+      activeDeadlineSeconds: 21600
+      resources: {}
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Rolling
+    template:
+      metadata:
+        annotations:
+          openshift.io/generated-by: OpenShiftNewApp
+        creationTimestamp: null
+        labels:
+          app: ${APP_NAME}
+          deploymentconfig: ${APP_NAME}
+      spec:
+        containers:
+        - env:
+          - name: DATABASE_USER
+            valueFrom:
+              secretKeyRef:
+                key: database-user
+                name: external-db
+          - name: DATABASE_NAME
+            valueFrom:
+              secretKeyRef:
+                key: database-name
+                name: external-db
+          - name: DATABASE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: database-password
+                name: external-db
+          - name: JAVA_OPTIONS
+            value: -Dspring.profiles.active=openshift
+          image: ''
+          imagePullPolicy: Always
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          name: ${APP_NAME}
+          ports:
+          - containerPort: 8443
+            protocol: TCP
+          - containerPort: 8778
+            protocol: TCP
+          - containerPort: 8080
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 10
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /deployments/config
+            name: application-config
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: application-config
+          name: application-config
+          items:
+          - key: application-openshift.properties
+            path: application-openshift.properties
+    test: false
+    triggers:
+    - type: ConfigChange
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - ${APP_NAME}
+        from:
+          kind: ImageStreamTag
+          name: ${APP_NAME}:latest
+      type: ImageChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenShiftNewApp
+    creationTimestamp: null
+    labels:
+      app: ${APP_NAME}
+    name: ${APP_NAME}
+  spec:
+    ports:
+    - name: 8080-tcp
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    - name: 8443-tcp
+      port: 8443
+      protocol: TCP
+      targetPort: 8443
+    - name: 8778-tcp
+      port: 8778
+      protocol: TCP
+      targetPort: 8778
+    selector:
+      app: ${APP_NAME}
+      deploymentconfig: ${APP_NAME}
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Route
+  metadata:
+    annotations:
+      openshift.io/host.generated: "true"
+    creationTimestamp: null
+    name: ${APP_NAME}
+  spec:
+    port:
+      targetPort: 8080-tcp
+    to:
+      kind: Service
+      name: ${APP_NAME}
+      weight: 100
+    wildcardPolicy: None
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    annotations:
+      openshift.io/generated-by: OpenShiftNewApp
+    creationTimestamp: null
+    labels:
+      app: ${APP_NAME}
+    name: ${APP_NAME}
+  spec:
+    failedBuildsHistoryLimit: 5
+    nodeSelector: null
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${APP_NAME}:latest
+    postCommit: {}
+    resources: {}
+    runPolicy: Serial
+    source:
+      git:
+        ref: ${GIT_REF}
+        uri: ${GIT_REPO}
+      type: Git
+    strategy:
+      sourceStrategy:
+        from:
+          kind: ImageStreamTag
+          name: redhat-openjdk18-openshift:latest
+          namespace: openshift
+      type: Source
+    successfulBuildsHistoryLimit: 5
+    triggers:
+    - github:
+        secret: mzvDbyXYMPqDm3J6QWvR
+      type: GitHub
+    - generic:
+        secret: jOCm2HKXOVQglKZZ3cDt
+      type: Generic
+    - type: ConfigChange
+    - imageChange: {}
+      type: ImageChange
+- apiVersion: v1
+  data:
+    application-openshift.properties: |-
+      # PostgresDB Settings
+      spring.datasource.url=jdbc:postgresql://external-db:5432/${DATABASE_NAME}
+      spring.datasource.username=${DATABASE_USER}
+      spring.datasource.password=${DATABASE_PASSWORD}
+      spring.datasource.driver-class-name=org.postgresql.Driver
+      #spring.jpa.hibernate.ddl-auto=create
+  kind: ConfigMap
+  metadata:
+    creationTimestamp: null
+    name: application-config
+- apiVersion: v1
+  kind: Secret
+  data:
+    database-name: Zm9vYmFy
+    database-password: Zm9vYmFy
+    database-user: Zm9vYmFy
+  metadata:
+    labels:
+      app: ${APP_NAME}
+    name: external-db
+  type: Opaque
+- apiVersion: "v1"
+  kind: "Endpoints"
+  metadata:
+    name: "external-db"
+  subsets:
+  - addresses:
+    - ip: "${EXTERNAL_DB_IP}"
+    ports:
+    - port: 5432
+      name: "postgresql"
+- apiVersion: "v1"
+  kind: "Service"
+  metadata:
+    name: "external-db"
+  spec:
+    ports:
+    - name: "postgresql"
+      protocol: "TCP"
+      port: 5432
+      targetPort: 5432
+      nodePort: 0
+  selector: {}
+parameters:
+- description: The name assigned to the application.
+  displayName: Application Name
+  name: APP_NAME
+  required: true
+  value: product-catalog
+- description: The URL of the repository with your application source code.
+  displayName: Git Repository URL
+  name: GIT_REPO
+  required: true
+  value: https://github.com/tahonen/product-catalog.git
+- description: Set this to a branch name, tag or other ref of your repository if you are not using the default branch.
+  displayName: Git Reference
+  name: GIT_REF
+  value: master
+- description: External DB IP address
+  displayName: External DB IP
+  name: EXTERNAL_DB_IP
+  required: true
+  value: 10.1.0.4
